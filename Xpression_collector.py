@@ -3,11 +3,11 @@
 
 __version__= "0.4.0" # latest version
 __usage__="""
-			python3 Xpression_collector.py
+			python3 XpBrew.py
 			--input_config <Full path to tab separated config file specifying the reference name, full path to CDS file, and full path to GFF file>
 							First column has the reference name, TAIR10 for example, second and third columns need the full path to CDS and GFF files
 							for the specific reference; Providing the CDS file path is mandatory while the GFF file is optional.
-							Xpression_collector thereby supports expression analysis of the accessions using multiple references. So different references
+							XpBrew thereby supports expression analysis of the accessions using multiple references. So different references
 							can be specified one per line along with the other columnar details in the input confog file>
 			--sample_name <Name of the sample you are analyzing>
 			--sra <Full path to TXT file with one SRA accession per line>
@@ -30,7 +30,7 @@ __usage__="""
 						 <First column will have paths to filtered_tpm files one per line; Second column will have paths to filtered_repr_tpm files one per line>
 			--only_merge' <Inserting this flag triggers only tpm and repr tpm file merging and not the entire expression analysis run>
 							But the standalone merge can work out only if the output folder specified already has a set of output files from a previous
-							Xpression_collector run;
+							XpBrew run;
 							The difference between --merge_tpms and --only_merge is that the former can carry out accession fetching and expression analysis run and do the merging
 							of the config specified files with the results produced in that run. Whereas with --only_merge the fetching of accessions and expression
 							analysis steps are skipped, the script checks if the output files sample_unfiltered.tpms.tsv, sample_unfiltered.repr.tpms.tsv, sample.tpms.tsv
@@ -114,7 +114,7 @@ def update_status(accession, stage):
 		status[accession] = stage
 
 def build_dashboard():
-	table = Table(title="Xpression_collector Live Status")
+	table = Table(title="XpBrew Live Status")
 	table.add_column("Accession")
 	table.add_column("Stage")
 
@@ -1392,11 +1392,11 @@ def main(arguments):
 	else:
 		clean_up = 'yes'
 
-	logfile = os.path.join(outdir, 'Xpression_collector.log')
+	logfile = os.path.join(outdir, 'XpBrew.log')
 	subprocess_log = open(logfile, 'a')
 
 	# Create a logger
-	logger = logging.getLogger("Xpression_collector_logger")
+	logger = logging.getLogger("XpBrew_logger")
 	logger.setLevel(logging.DEBUG)  # Capture all levels of logs
 
 	# Create a file handler to write logs to a file
@@ -1474,7 +1474,7 @@ def main(arguments):
 				line=f.readline()
 
 
-	logger.info("Welcome to Xpression_collector!")
+	logger.info("Welcome to XpBrew v0.4.0!")
 
 	results_out_folder = os.path.join(outdir, 'Results')
 	if not os.path.exists(results_out_folder):
@@ -1882,9 +1882,9 @@ def main(arguments):
 
 			fig.savefig(fig_file)
 			if remove_isoforms == 'no':
-				logger.info(f'Xpression_collector pipeline completed successfully for {ref}!!!')
+				logger.info(f'XpBrew pipeline completed successfully for {ref}!!!')
 				if RICH_AVAILABLE:
-					sys.stdout.write(f'Xpression_collector pipeline completed successfully for {ref}!!!\n')
+					sys.stdout.write(f'XpBrew pipeline completed successfully for {ref}!!!\n')
 					sys.stdout.flush()
 
 		#optional removal of isoforms
@@ -1940,9 +1940,9 @@ def main(arguments):
 
 				#code block to produce TPM file without alternative isoforms
 				repr_tpm_filtered = keep_primary_transcript_exp(repr_ids, repr_tpm_file, isoform_reduced_cds_file, filtered_tpm_file)
-				logger.info(f'Xpression_collector pipeline completed successfully for {ref}!!!')
+				logger.info(f'XpBrew pipeline completed successfully for {ref}!!!')
 				if RICH_AVAILABLE:
-					sys.stdout.write(f"Xpression_collector pipeline completed successfully for {ref}!!!\n")
+					sys.stdout.write(f"XpBrew pipeline completed successfully for {ref}!!!\n")
 					sys.stdout.flush()
 
 		# code block to merge filtered TPM file produced in this run with already existing filtered TPM files
@@ -1987,9 +1987,9 @@ def main(arguments):
 				if merge_filtered_repr_tpm:
 					pass
 				else:
-					logger.info(f'Xpression_collector pipeline completed successfully for {ref}!!!')
+					logger.info(f'XpBrew pipeline completed successfully for {ref}!!!')
 					if RICH_AVAILABLE:
-						sys.stdout.write(f"Xpression_collector pipeline completed successfully for {ref}!!!\n")
+						sys.stdout.write(f"XpBrew pipeline completed successfully for {ref}!!!\n")
 						sys.stdout.flush()
 			except ValueError as e:
 				logger.error(f"Aborting merge for {ref}:\n{e}")
@@ -2026,9 +2026,9 @@ def main(arguments):
 						if RICH_AVAILABLE:
 							sys.stdout.write(f"{ref}: No valid representative (alternative transcripts free) expression file produced in this run for merge.\n")
 							sys.stdout.flush()
-				logger.info(f'Xpression_collector pipeline completed successfully for {ref}!!!')
+				logger.info(f'XpBrew pipeline completed successfully for {ref}!!!')
 				if RICH_AVAILABLE:
-					sys.stdout.write(f"Xpression_collector pipeline completed successfully for {ref}!!!\n")
+					sys.stdout.write(f"XpBrew pipeline completed successfully for {ref}!!!\n")
 					sys.stdout.flush()
 			except ValueError as e:
 				logger.error(f"Aborting merge for {ref}:\n{e}")
