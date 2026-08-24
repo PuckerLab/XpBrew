@@ -1,9 +1,9 @@
 
-<img width="524" height="252" alt="xpression_collector_logo" src="https://github.com/user-attachments/assets/ba8bb939-0c83-4724-a82f-524acdb64910" />
+<img width="524" height="252" alt="XpBrew_logo" src="https://github.com/user-attachments/assets/ba8bb939-0c83-4724-a82f-524acdb64910" />
 
-# Xpression_collector - an end-to-end pipeline for RNA-seq data processing
+# XpBrew - an end-to-end pipeline for RNA-seq data processing
 
-Xpression_collector is a simple Python-based pipeline for fetching RNA-seq reads from SRA and processing them to get the expression TPM files for further downstream analyses. Following are the salient features of the pipeline:
+XpBrew is a simple Python-based pipeline for fetching RNA-seq reads from SRA and processing them to get the expression TPM files for further downstream analyses. Following are the salient features of the pipeline:
 
 -> Optional BUSCO analysis of the PEP file obtained from the input CDS file
 
@@ -61,11 +61,11 @@ Xpression_collector is a simple Python-based pipeline for fetching RNA-seq reads
   
   -> Better error handling and network issue tolerant fall backs in SRA file fetching
   
-  -> You can now merge already exisiting TPM/ repr_TPM files with the ones produced in the current run of Xpression_collector
+  -> You can now merge already exisiting TPM/ repr_TPM files with the ones produced in the current run of XpBrew
 
 ## Workflow
 
-<img width="7221" height="8192" alt="Xpression_collector drawio(3)" src="https://github.com/user-attachments/assets/0ae4a050-2d40-4ecb-8266-73ea39d71ed5" />
+<img width="7221" height="8192" alt="XpBrew drawio(3)" src="https://github.com/user-attachments/assets/0ae4a050-2d40-4ecb-8266-73ea39d71ed5" />
 
 
 ## Installation and dependencies
@@ -86,13 +86,13 @@ git clone https://github.com/PuckerLab/Xpression_collect
 ### (2) Docker installation
 
 ```
-docker pull shakunthalan/xpression_collector:latest
+docker pull shakunthalan/XpBrew:latest
 ```
 
 It is recommended to run the docker image as a user and not root:
 
 ```
- docker run --rm -u $(id -u) -v /path/to/data:/path/to/data shakunthalan/xpression_collector:latest
+ docker run --rm -u $(id -u) -v /path/to/data:/path/to/data shakunthalan/XpBrew:latest
 ```
 
 **Note:** If you are using a docker image of the tool, you need not specify the dependencies' full paths while running the tool; The dependencies are built-in in the docker image and that makes it simple to use the tool across systems without the need for local installations.
@@ -108,7 +108,7 @@ cd Xpression_collect
 
 conda env create -f environment.yml
 
-conda activate xpression_collector
+conda activate XpBrew
 ```
 
 If you have a fresh install of conda, please follow the below steps:
@@ -122,7 +122,7 @@ conda update -n base conda-libmamba-solver libmamba libmambapy
 
 conda env create -f environment.yml
 
-conda activate xpression_collector
+conda activate XpBrew
 ```
 If your package metadata collection or environment solving steps are taking long, follow the below steps:
 
@@ -149,7 +149,7 @@ solver: libmamba
 
 conda env create -f environment.yml
 
-conda activate xpression_collector
+conda activate XpBrew
 ```
 
 ## Running the pipeline
@@ -157,7 +157,7 @@ conda activate xpression_collector
 ```
 Usage:
 
-python3 Xpression_collector.py --input_config <CONFIG_FILE>
+python3 XpBrew.py --input_config <CONFIG_FILE>
                                --sra <TXT_FILE_WITH_SRA_ACCESSIONS_LIST>
                                --out <OUTPUT_DIR>
 MANDATORY:
@@ -301,7 +301,7 @@ OPTIONAL:
 
 -> --fetch allows you to choose the repository for fetching the accessions - ENA-FTP fetch via kingfisher or fetching from SRA via sratoolkit; While choosing the kingfisher fetch method, there is an option to activate fall-back to sratoolkit fetching in case the accession is not found in ENA with --fetch_fallback. In such cases, the run time can increase since the first trial is done with ENA-FTP and in case of a failure, sratoolkit is attempted as fallback. Hence it is first recommended to ensure presence of all accessions in your list in one of these databases and choose the fetch method accordingly.
 
--> To allow for easy merge and future updates to existing expression files, the --merge_tpms and --only_merge flags are provided. The difference between --merge_tpms and --only_merge is that the former can carry out accession fetching and expression analysis run and do the merging of the config specified files with the results produced in that run. Whereas with --only_merge, the fetching of accessions and expression analysis steps are skipped, the script checks if the output files sample_unfiltered.tpms.tsv, sample_unfiltered.repr.tpms.tsv, sample.tpms.tsv, sample.repr.tpms.tsv, sample.pep.fasta, sample.repr.pep.fasta, sample.repr.cds.fasta are already present in the putput folder specified and if so, activates the merge of the tpm files. Hnece it is important to note that the standalone merge can work out only if the output folder specified already has a set of output files from a previous Xpression_collector run.
+-> To allow for easy merge and future updates to existing expression files, the --merge_tpms and --only_merge flags are provided. The difference between --merge_tpms and --only_merge is that the former can carry out accession fetching and expression analysis run and do the merging of the config specified files with the results produced in that run. Whereas with --only_merge, the fetching of accessions and expression analysis steps are skipped, the script checks if the output files sample_unfiltered.tpms.tsv, sample_unfiltered.repr.tpms.tsv, sample.tpms.tsv, sample.repr.tpms.tsv, sample.pep.fasta, sample.repr.pep.fasta, sample.repr.cds.fasta are already present in the putput folder specified and if so, activates the merge of the tpm files. Hnece it is important to note that the standalone merge can work out only if the output folder specified already has a set of output files from a previous XpBrew run.
 
 ## Third party tool references
 
@@ -318,7 +318,7 @@ OPTIONAL:
 
 ## Citation:
 
-Kindly cite this repository if you use the Xpression_collector pipeline in your work
+Kindly cite this repository if you use the XpBrew pipeline in your work
 
 
 
