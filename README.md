@@ -64,7 +64,7 @@ XpBrew is a simple Python-based pipeline for fetching RNA-seq reads from SRA and
 
 ## Workflow
 
-<img width="7221" height="8192" alt="XpBrew drawio(3)" src="https://github.com/user-attachments/assets/0ae4a050-2d40-4ecb-8266-73ea39d71ed5" />
+<img width="7224" height="8192" alt="Xpression_collector drawio" src="https://github.com/user-attachments/assets/ea2ded2f-f774-422e-9d17-5c897d5eea93" />
 
 
 ## Installation and dependencies
