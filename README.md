@@ -1,5 +1,4 @@
 
-<img width="524" height="252" alt="XpBrew_logo" src="https://github.com/user-attachments/assets/ba8bb939-0c83-4724-a82f-524acdb64910" />
 
 # XpBrew - an end-to-end pipeline for RNA-seq data processing
 
