@@ -1,7 +1,7 @@
 ### Shakunthala Natarajan ###
 ### bug reports: s64snata@uni-bonn.de ###
 
-__version__= "0.4.0" # latest version
+__version__= "0.5.0" # latest version
 __usage__="""
 			python3 XpBrew.py
 			--input_config <Full path to tab separated config file specifying the reference name, full path to CDS file, and full path to GFF file>
@@ -25,8 +25,11 @@ __usage__="""
 			--attempts <Number of attempts at prefetching and accession from SRA> default is just 1 attempt
 			--wait <Base wait time for sleep in case of network delays for prefetch; Increases exponentially with a base of 2 for each reattempt> default is 20 seconds
 			--remove_isoforms <Optional step to remove isoforms>< yes or no> default is yes
-			'--only_merge' <Inserting this flag triggers only tpm and repr tpm file merging and not the entire expression analysis run>
 			--merge_tpms <Full path to config file containing the full paths to the filtered_tpm, and/or repr_filtered_tpms to be merged>
+						 <One config file per reference and the config file name must match the reference name excluding extension>
+						 <If multiple references are present, provide the full path to a folder containing the config files per reference>
+						 <Every config file must end with an extension .merge_config>
+						 <Sample config file name: tair10.merge_config>
 						 <First column will have paths to filtered_tpm files one per line; Second column will have paths to filtered_repr_tpm files one per line>
 			--only_merge' <Inserting this flag triggers only tpm and repr tpm file merging and not the entire expression analysis run>
 							But the standalone merge can work out only if the output folder specified already has a set of output files from a previous
@@ -57,6 +60,7 @@ __usage__="""
 import os,sys,glob, re, time
 import gzip
 import subprocess
+import math
 import tempfile
 import copy
 import logging
@@ -74,7 +78,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed, TimeoutError
 try:
 	from pyfiglet import Figlet
 	f = Figlet(font='doom',width=200)
-	print(f.renderText('Xpression collector'))
+	print(f.renderText('XpBrew v0.5.0'))
 except ImportError:
 	pass
 
@@ -679,10 +683,13 @@ def job_executer(accession, logger, jobs_to_run, kallisto, threads, kallisto_com
 			p.communicate()
 		if result is not None and p is not None:
 			if result.returncode!=0 or p.returncode !=0:
+				with open(failed_accessions_file, 'r') as f:
+					existing_accessions = set(line.strip() for line in f)
 				with open(failed_accessions_file, 'a') as out:
-					out.write(f'{accession}\n')
-					out.flush()
-					os.fsync(out.fileno())
+					if accession not in existing_accessions:
+						out.write(f'{accession}\n')
+						out.flush()
+						os.fsync(out.fileno())
 				raise RuntimeError(f"Kallisto quantification did not complete successfully for {accession}")
 			else:
 				with open(kallisto_completed_accessions, 'a') as out:
@@ -691,10 +698,13 @@ def job_executer(accession, logger, jobs_to_run, kallisto, threads, kallisto_com
 					os.fsync(out.fileno())
 				update_status(accession, "completed")
 		else:
+			with open(failed_accessions_file, 'r') as f:
+				existing_accessions = set(line.strip() for line in f)
 			with open(failed_accessions_file, 'a') as out:
-				out.write(f'{accession}\n')
-				out.flush()
-				os.fsync(out.fileno())
+				if accession not in existing_accessions:
+					out.write(f'{accession}\n')
+					out.flush()
+					os.fsync(out.fileno())
 			logger.error(f"No kallisto job has been run. Potential upstream error.")
 	except RuntimeError as e:
 		update_status(accession, "kallisto failed")
@@ -746,6 +756,7 @@ def merge_samplewise_tpms_counts_files(folder, out_file):
 		df = pd.read_csv(f, sep='\t', index_col='gene')
 		dfs.append(df)
 	merged = pd.concat(dfs, axis=1, join='outer')#axis 1 stacks data column-wise, outer join retains all transcripts in the df and fills the missing ones with the value given for na_rep
+	merged = merged.loc[:,~merged.columns.duplicated()]#reatin only the first occurrence of each column name i.e. SRA accession name to avoid duplicates
 	merged.index.name = 'gene'
 	merged.to_csv(out_file, sep='\t')
 
@@ -891,7 +902,7 @@ def check_gene_consistency(file_paths):
 		return False, "Gene mismatch detected:" + "".join(errors)
 	return True, None
 
-def merge_expression_tsvs(base_file, additional_files):
+def merge_expression_tsvs(base_file, additional_files,logger,RICH_AVAILABLE):
 	all_files = [base_file] + additional_files
 
 	# --- Validate before merging ---
@@ -900,7 +911,20 @@ def merge_expression_tsvs(base_file, additional_files):
 		raise ValueError(error_msg)
 
 	dfs = [pd.read_csv(f, sep='\t', index_col='gene') for f in all_files]
-	merged = reduce(lambda left, right: left.join(right, how='inner'), dfs)
+	#code block to drop duplicated sample columns across files while merging
+	seen_columns = set()
+	deduplicated_dfs = []
+	for df in dfs:
+		duplicated_cols = [c for c in df.columns if c in seen_columns]
+		if duplicated_cols:
+			logger.info(f"Warning duplicate sample columns found. Keeping only the first occurring columns for sample(s): {duplicated_cols}")
+			if RICH_AVAILABLE:
+				sys.stdout.write(f"Warning duplicate sample columns found. Keeping only the first occurring columns for sample(s): {duplicated_cols}")
+				sys.stdout.flush()
+			df = df.drop(columns=duplicated_cols)
+		seen_columns.update(df.columns)
+		deduplicated_dfs.append(df)
+	merged = reduce(lambda left, right: left.join(right, how='inner'), deduplicated_dfs)
 	merged = merged.copy()#to avoid fragmented dataframe warning
 	return merged.reset_index()
 
@@ -1337,12 +1361,10 @@ def main(arguments):
 		kallisto = arguments[arguments.index('--kallisto')+1]
 	else:
 		kallisto = "/tools/xpcollect_env/bin/kallisto"
-
 	if '--fasterq-dump' in arguments:#full path to fasterq-dump from NCBI SRA toolkit
 		fasterq_dump = arguments[arguments.index('--fasterq-dump')+1]
 	else:
 		fasterq_dump = '/tools/sratoolkit/bin/fasterq-dump'
-
 
 	if '--prefetch' in arguments:
 		prefetch_command = arguments[arguments.index('--prefetch')+1]
@@ -1462,21 +1484,47 @@ def main(arguments):
 	else:
 		standalone_merge = 'no'
 
-	merge_filtered_tpm= []
-	merge_filtered_repr_tpm = []
+	ref_dic_tpm = {}
+	ref_dic_repr_tpm = {}
 	if '--merge_tpms' in arguments:#full path to config file containing the full paths to the filtered_tpm, and/or repr_filtered_tpms to be merged; first column will have paths to filtered_tpm files one per line; second column will have paths to filtered_repr_tpm files one per line
 		tpm_config = arguments[arguments.index('--merge_tpms')+1]
-		with open (tpm_config, 'r') as f:
-			line = f.readline()
-			while line:
-				parts = line.strip().split('\t')
-				merge_filtered_tpm.append(parts[0])
-				if len(parts)>1:
-					merge_filtered_repr_tpm.append(parts[1])
-				line=f.readline()
+		if os.path.isfile(tpm_config):
+			ref = Path(tpm_config).stem
+			if not tpm_config.endswith('.merge_config'):
+				raise ValueError (f"{tpm_config} is not a .merge_config file")
+			merge_filtered_tpm = []
+			merge_filtered_repr_tpm = []
+			with open (tpm_config, 'r') as f:
+				line = f.readline()
+				while line:
+					parts = line.strip().split('\t')
+					merge_filtered_tpm.append(parts[0])
+					if len(parts)>1:
+						merge_filtered_repr_tpm.append(parts[1])
+					line=f.readline()
+			ref_dic_tpm[ref] = merge_filtered_tpm
+			ref_dic_repr_tpm[ref] = merge_filtered_repr_tpm
+		elif os.path.isdir(tpm_config):
+			for fname in os.listdir(tpm_config):
+				if not fname.endswith('.merge_config'):
+					continue
+				fpath = os.path.join(tpm_config, fname)
+				ref = Path(fname).stem
+				merge_filtered_tpm = []
+				merge_filtered_repr_tpm = []
+				with open(fpath, 'r') as f:
+					line = f.readline()
+					while line:
+						parts = line.strip().split('\t')
+						merge_filtered_tpm.append(parts[0])
+						if len(parts) > 1:
+							merge_filtered_repr_tpm.append(parts[1])
+						line = f.readline()
+				ref_dic_tpm[ref] = merge_filtered_tpm
+				ref_dic_repr_tpm[ref] = merge_filtered_repr_tpm
 
 
-	logger.info("Welcome to XpBrew v0.4.0!")
+	logger.info("Welcome to XpBrew v0.5.0!")
 
 	results_out_folder = os.path.join(outdir, 'Results')
 	if not os.path.exists(results_out_folder):
@@ -1778,18 +1826,41 @@ def main(arguments):
 				if "_" in ID:  # only take ID if datetime string was included in file name
 					ID = ID.split("_")[-1]
 				counts, tpms = load_counttable(filename)
-				sample_counts_file = os.path.join(temp_counts_folder, f'{ID}.counts.tsv')
-				sample_tpms_file = os.path.join(temp_tpms_folder, f'{ID}.tpms.tsv')
+				nan_counter = 0
+				for gene, expression in tpms.items():
+					if math.isnan(expression):
+						nan_counter += 1
+				if nan_counter < 0.4*(len(tpms.keys())) and nan_counter == 0:#tpms and counts files are written to the Temp folders only if the accession has less than 40% of nan in the tpm column
+					sample_counts_file = os.path.join(temp_counts_folder, f'{ID}.counts.tsv')
+					sample_tpms_file = os.path.join(temp_tpms_folder, f'{ID}.tpms.tsv')
 
-				with open(sample_counts_file, "w") as out:
-					out.write("\t".join(['gene', ID]) + '\n')
-					out.write('\n'.join(f"{gene}\t{value}" for gene, value in counts.items()))
-					out.write('\n')
+					with open(sample_counts_file, "w") as out:
+						out.write("\t".join(['gene', ID]) + '\n')
+						out.write('\n'.join(f"{gene}\t{value}" for gene, value in counts.items()))
+						out.write('\n')
 
-				with open(sample_tpms_file, "w") as out:
-					out.write("\t".join(['gene', ID]) + '\n')
-					out.write('\n'.join(f"{gene}\t{value}" for gene, value in tpms.items()))
-					out.write('\n')
+					with open(sample_tpms_file, "w") as out:
+						out.write("\t".join(['gene', ID]) + '\n')
+						out.write('\n'.join(f"{gene}\t{value}" for gene, value in tpms.items()))
+						out.write('\n')
+
+				elif nan_counter < 0.4*(len(tpms.keys())) and nan_counter != 0:#tpms and counts files are written to the Temp folders only if the accession has less than 40% of nan in the tpm column and a warning is given to say that there are nan values
+					logger.info(f"nan tpm values found for certain genes in count table files of the accession {ID} for reference {ref}")
+					if RICH_AVAILABLE:
+						sys.stdout.write(f"nan tpm values found for certain genes in count table files of the accession {ID} for reference {ref}")
+						sys.stdout.flush()
+					sample_counts_file = os.path.join(temp_counts_folder, f'{ID}.counts.tsv')
+					sample_tpms_file = os.path.join(temp_tpms_folder, f'{ID}.tpms.tsv')
+
+					with open(sample_counts_file, "w") as out:
+						out.write("\t".join(['gene', ID]) + '\n')
+						out.write('\n'.join(f"{gene}\t{value}" for gene, value in counts.items()))
+						out.write('\n')
+
+					with open(sample_tpms_file, "w") as out:
+						out.write("\t".join(['gene', ID]) + '\n')
+						out.write('\n'.join(f"{gene}\t{value}" for gene, value in tpms.items()))
+						out.write('\n')
 
 			merge_samplewise_tpms_counts_files(temp_counts_folder, countsfile)
 			merge_samplewise_tpms_counts_files(temp_tpms_folder, tpmfile)
@@ -1956,14 +2027,15 @@ def main(arguments):
 			merged_filtered_tpm_file = os.path.join(folder, f'{orgname}_merged.tpms.tsv')
 			merged_filtered_repr_tpm_file = os.path.join(folder, f'{orgname}_merged.repr.tpms.tsv')
 
-		if merge_filtered_tpm:
+		if ref_dic_tpm:
+			merge_filtered_tpm = ref_dic_tpm[ref]
 			logger.info(f"Starting to merge TPM file(s)")
 			if RICH_AVAILABLE:
 				sys.stdout.write(f"Starting to merge TPM file(s)\n")
 				sys.stdout.flush()
 			try:
 				if os.path.exists(filtered_tpm_file):
-					merged_df = merge_expression_tsvs(filtered_tpm_file, merge_filtered_tpm)
+					merged_df = merge_expression_tsvs(filtered_tpm_file, merge_filtered_tpm,logger,RICH_AVAILABLE)
 					merged_df.to_csv(merged_filtered_tpm_file, sep='\t', index=False)
 					logger.info(f"Merge of currently produced TPM file and user supplied TPM file(s) successful: {merged_df.shape[0]} genes x {merged_df.shape[1]} samples")
 					if RICH_AVAILABLE:
@@ -1971,7 +2043,7 @@ def main(arguments):
 						sys.stdout.flush()
 				else:
 					if len(merge_filtered_tpm) > 1:
-						merged_df = merge_expression_tsvs(merge_filtered_tpm[0],merge_filtered_tpm[1:])
+						merged_df = merge_expression_tsvs(merge_filtered_tpm[0],merge_filtered_tpm[1:],logger,RICH_AVAILABLE)
 						merged_df.to_csv(merged_filtered_tpm_file, sep='\t', index=False)
 						logger.warning(f"{ref}: No valid expression file produced in this run for merge. Merged the other expression files input for merge.")
 						if RICH_AVAILABLE:
@@ -1986,7 +2058,7 @@ def main(arguments):
 						if RICH_AVAILABLE:
 							sys.stdout.write(f"{ref}: No valid expression file produced in this run for merge.\n")
 							sys.stdout.flush()
-				if merge_filtered_repr_tpm:
+				if ref_dic_repr_tpm:
 					pass
 				else:
 					logger.info(f'XpBrew pipeline completed successfully for {ref}!!!')
@@ -1998,14 +2070,15 @@ def main(arguments):
 				if RICH_AVAILABLE:
 					sys.stdout.write(f"Aborting merge for {ref}:\n{e}")
 					sys.stdout.flush()
-		if merge_filtered_repr_tpm and remove_isoforms == 'yes':
+		if ref_dic_repr_tpm and remove_isoforms == 'yes':
+			merge_filtered_repr_tpm = ref_dic_repr_tpm[ref]
 			logger.info(f"Starting to merge representative TPM file(s)")
 			if RICH_AVAILABLE:
 				sys.stdout.write(f"Starting to merge representative TPM file(s)\n")
 				sys.stdout.flush()
 			try:
 				if os.path.exists(repr_tpm_file):#repr_tpm_file and repr_tpm_filtered refer to the same isoform removed TPM file
-					merged_df = merge_expression_tsvs(repr_tpm_file, merge_filtered_repr_tpm)
+					merged_df = merge_expression_tsvs(repr_tpm_file, merge_filtered_repr_tpm,logger,RICH_AVAILABLE)
 					merged_df.to_csv(merged_filtered_repr_tpm_file, sep='\t', index=False)
 					logger.info(f"Merge of currently produced representative (alternative transcripts-free) TPM file and user supplied repr TPM file(s) successful for {ref}: {merged_df.shape[0]} genes x {merged_df.shape[1]} samples")
 					if RICH_AVAILABLE:
@@ -2013,7 +2086,7 @@ def main(arguments):
 						sys.stdout.flush()
 				else:
 					if len(merge_filtered_repr_tpm) > 1:
-						merged_df = merge_expression_tsvs(merge_filtered_repr_tpm[0],merge_filtered_repr_tpm[1:])
+						merged_df = merge_expression_tsvs(merge_filtered_repr_tpm[0],merge_filtered_repr_tpm[1:],logger,RICH_AVAILABLE)
 						merged_df.to_csv(merged_filtered_repr_tpm_file, sep='\t', index=False)
 						logger.warning(f"{ref}: No valid representative (alternative transcripts-free) expression file produced in this run for merge. Merged the other repr expression files input for merge.")
 						if RICH_AVAILABLE:
