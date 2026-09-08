@@ -1,4 +1,4 @@
-name: xpression_collector
+name: XpBrew
 channels:
   - conda-forge
   - bioconda
