@@ -194,8 +194,6 @@ OPTIONAL:
 
 --kingfisher		   STR	   Full path to kingfisher executable
 
---gff                  STR     Full path to GFF file if isoform removal needs to be performed
-
 --gff_config           STR     Full path to GFF config file specifying the reference name in
                                the first column followed by the different GFF attributes -
                                child_attribute, child_parent_linker, parent_attribute;
