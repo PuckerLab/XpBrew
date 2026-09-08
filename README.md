@@ -18,6 +18,16 @@ XpBrew is a simple Python-based pipeline for fetching RNA-seq reads from SRA and
 
 <h2>📢 News & Updates</h2>
 
+-> **v0.5.0 is out and is the latest stable release!**
+
+-> **v0.5.0 major changes include**:
+
+  -> Xpression_collector is now XpBrew!
+
+  -> Removes kallisto files containing greater than 40% of nans in the TPMs column from failed kallisto runs
+
+  -> Checks for duplicate samples and retains the first occurrence of a duplicate sample during the merging step 
+
 -> **v0.4.0 is out and is the latest stable release!**
 
 -> **v0.4.0 major changes include**:
@@ -72,7 +82,7 @@ XpBrew is a simple Python-based pipeline for fetching RNA-seq reads from SRA and
 ### (1) Manual installation
 
 ```
-git clone https://github.com/PuckerLab/Xpression_collect
+git clone https://github.com/PuckerLab/XpBrew
 ```
 **Mandatory dependencies**
 - **Tools** - kallisto, sratoolkit
@@ -85,16 +95,17 @@ git clone https://github.com/PuckerLab/Xpression_collect
 ### (2) Docker installation
 
 ```
-docker pull shakunthalan/XpBrew:latest
+docker pull shakunthalan/xpbrew:latest
 ```
 
 It is recommended to run the docker image as a user and not root:
 
 ```
- docker run --rm -u $(id -u) -v /path/to/data:/path/to/data shakunthalan/XpBrew:latest
+ docker run --rm -u $(id -u) -v /path/to/data:/path/to/data shakunthalan/xpbrew:latest
 ```
 
-**Note:** If you are using a docker image of the tool, you need not specify the dependencies' full paths while running the tool; The dependencies are built-in in the docker image and that makes it simple to use the tool across systems without the need for local installations.
+**Note:** If you are using a docker image of the tool, you need not specify the dependencies' full paths while running the tool; 
+The dependencies are built-in in the docker image and that makes it simple to use the tool across systems without the need for local installations.
 
 ### (3) Installation in a conda environment
 
@@ -175,20 +186,24 @@ OPTIONAL:
 
 --sample_name          STR     Name of the species; default is sample
 
---fetch				   STR	   Method of fetching the accessions; sratoolkit | kingfisher; default is sratoolkit
+--fetch				   STR	   Method of fetching the accessions; sratoolkit | kingfisher;
+                               default is sratoolkit
 
---fetch_fallback	   STR	   Option to fallback to sratoolkit in case kingfisher is chosen as the fetch method; yes | no default is no
+--fetch_fallback	   STR	   Option to fallback to sratoolkit in case kingfisher is chosen as
+                               the fetch method; yes | no default is no
 
 --kingfisher		   STR	   Full path to kingfisher executable
 
 --gff                  STR     Full path to GFF file if isoform removal needs to be performed
 
---gff_config           STR     Full path to GFF config file specifying the reference name in the first column followed by the
-                               different GFF attributes - child_attribute, child_parent_linker, parent_attribute;
+--gff_config           STR     Full path to GFF config file specifying the reference name in
+                               the first column followed by the different GFF attributes -
+                               child_attribute, child_parent_linker, parent_attribute;
                                default values in the config file are:
                                default	ID	Parent	ID
 
---min_sra_file_size    INT     Minimum file size cutoff in MB to check prefetched SRA file sizes to cath sralite files; default cutoff is 1MB
+--min_sra_file_size    INT     Minimum file size cutoff in MB to check prefetched SRA
+                               file sizes to cath sralite files; default cutoff is 1MB
 
 --annotation_qc        STR     yes or no for BUSCO-based QC of the PEP file; default is yes
 
@@ -196,41 +211,60 @@ OPTIONAL:
 
 --parallel_prefetch    STR     Number of SRA accessions to be prefetched parallely; default is 2
 
---storage_percentage   FLOAT   Storage threshold percentage cutoff to adjust queueing of parallel prefetched accessions according to available disk space
+--storage_percentage   FLOAT   Storage threshold percentage cutoff to adjust queueing of
+                               parallel prefetched accessions according to available
+                               disk space
 
---attempts             STR     Number of attempts at prefetching and accession from SRA; default is just 1 attempt
+--attempts             STR     Number of attempts at prefetching and accession from SRA;
+                               default is just 1 attempt
 
---wait                 STR     Base wait time for sleep in case of network delays for prefetch; Increases exponentially
-                               with a base of 2 for each reattempt; default is 20 seconds
+--wait                 STR     Base wait time for sleep in case of network delays for prefetch;
+                               Increases exponentially with a base of 2 for each reattempt;
+                               default is 20 seconds
 
---remove_isoforms      STR     Optional step to remove isoforms; yes or no; default is yes
+--remove_isoforms      STR     Optional step to remove isoforms; yes or no;
+                               default is yes
 
---merge_tpms           STR     Full path to config file containing the full paths to the filtered_tpm, and/or repr_filtered_tpms to be merged
+--merge_tpms           STR     Full path to config file containing the full paths to the
+                               filtered_tpm, and/or repr_filtered_tpms to be merged
 
-                               First column will have paths to filtered_tpm files one per line; Second column will have paths to filtered_repr_tpm
-                               files, one per line
+                               If multiple references are present, provide the full path
+                               to a folder containing the config files per reference
 
---only_merge'		   STR	   Inserting this flag triggers only tpm and repr tpm file merging and not the entire expression analysis run
+                               Every config file must end with an extension .merge_config
+
+                               Sample config file name: tair10.merge_config
+
+                               First column will have paths to filtered_tpm files one per line;
+                               Second column will have paths to filtered_repr_tpm files,
+                               one per line
+
+--only_merge'		   STR	   Inserting this flag triggers only tpm and repr tpm file merging
+                               and not the entire expression analysis run
 
 --min                  INT     Minimum percentage expression of top 100 genes
 
 --max                  INT     Maximum percentage expression of top 100 genes
 
---black                STR     SRA IDs to be removed or blacklisted in a TXT file with one SRA accession ID per line
+--black                STR     SRA IDs to be removed or blacklisted in a TXT file with
+                               one SRA accession ID per line
 
---busco                STR     Full path to BUSCO; Specify busco_docker if BUSCO is installed via docker
+--busco                STR     Full path to BUSCO; Specify busco_docker if BUSCO is
+                               installed via docker
 
 --busco_lineage        STR     BUSCO lineage of the specific organism
 
---busco_version        STR     Version of BUSCO> default is v6.0.0
+--busco_version        STR     Version of BUSCO; default is v6.1.0
 
---container_version    STR     Container version of the BUSCO docker image
+--container_version    STR     Container version of the BUSCO docker image;
+                               default is cv1
 
 --docker_host_path     STR     Host path to be mounted on for running the docker image
  
 -docker_container_path STR     Container path of the docker image
 
---organism_type        STR     eukaryote or prokaryote for BUSCO analysis; default is eukaryote
+--organism_type        STR     eukaryote or prokaryote for BUSCO analysis;
+                               default is eukaryote
 
 --kallisto             STR     Full path to the kallisto executable
 
@@ -240,7 +274,8 @@ OPTIONAL:
 
 --uncompressed         STR     Provide this flag if your read files are uncompressed
 
---clean_up             STR     Clean up the TMP folder after a successful run; default is yes
+--clean_up             STR     Clean up the TMP folder after a successful run;
+                               default is yes
 
 ```
 ## More details
