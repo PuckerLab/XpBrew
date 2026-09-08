@@ -352,7 +352,7 @@ OPTIONAL:
 
 ## Citation:
 
-Kindly cite this repository if you use the XpBrew pipeline in your work
+Natarajan, S. et al. XpBrew and PanXpresso - automatic RNA-seq processing workflow and comprehensive collection of gene expression data. 2026.08.27.747620 Preprint at https://doi.org/10.64898/2026.08.27.747620 (2026).
 
 
 
