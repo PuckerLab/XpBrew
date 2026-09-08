@@ -84,7 +84,7 @@ WORKDIR /app
 
 # Copy Python dependencies and Python scripts
 COPY requirements.txt .
-COPY Xpression_collector_docker.py .
+COPY XpBrew_docker.py .
 
 
 # Install Python dependencies inside xpcollect_env
@@ -106,5 +106,5 @@ RUN /tools/xpcollect_env/bin/kallisto --help > /dev/null 2>&1 && echo "Kallisto 
 SHELL ["/bin/bash", "-c"]
 
 # Default command runs your Python script using the xpcollect_env Python
-ENTRYPOINT ["/tools/xpcollect_env/bin/python", "Xpression_collector_docker.py"]
+ENTRYPOINT ["/tools/xpcollect_env/bin/python", "XpBrew_docker.py"]
 
