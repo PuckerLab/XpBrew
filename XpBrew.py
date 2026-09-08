@@ -26,6 +26,9 @@ __usage__="""
 			--wait <Base wait time for sleep in case of network delays for prefetch; Increases exponentially with a base of 2 for each reattempt> default is 20 seconds
 			--remove_isoforms <Optional step to remove isoforms>< yes or no> default is yes
 			--merge_tpms <Full path to config file containing the full paths to the filtered_tpm, and/or repr_filtered_tpms to be merged>
+						 <If multiple references are present, provide the full path to a folder containing the config files per reference>
+						 <Every config file must end with an extension .merge_config>
+						 <Sample config file name: tair10.merge_config>
 						 <First column will have paths to filtered_tpm files one per line; Second column will have paths to filtered_repr_tpm files one per line>
 			--only_merge' <Inserting this flag triggers only tpm and repr tpm file merging and not the entire expression analysis run>
 							But the standalone merge can work out only if the output folder specified already has a set of output files from a previous
@@ -74,7 +77,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed, TimeoutError
 try:
 	from pyfiglet import Figlet
 	f = Figlet(font='doom',width=200)
-	print(f.renderText('Xpression collector'))
+	print(f.renderText('XpBrew v0.5.0'))
 except ImportError:
 	pass
 
