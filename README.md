@@ -112,9 +112,9 @@ The dependencies are built-in in the docker image and that makes it simple to us
 This method of installation installs all the dependencies in a conda environment using the environment.yml file in this repository
 
 ```
-git clone https://github.com/PuckerLab/Xpression_collect
+git clone https://github.com/PuckerLab/XpBrew
 
-cd Xpression_collect
+cd XpBrew
 
 conda env create -f environment.yml
 
@@ -124,9 +124,9 @@ conda activate XpBrew
 If you have a fresh install of conda, please follow the below steps:
 
 ```
-git clone https://github.com/PuckerLab/Xpression_collect
+git clone https://github.com/PuckerLab/XpBrew
 
-cd Xpression_collect
+cd XpBrew
 
 conda update -n base conda-libmamba-solver libmamba libmambapy
 
@@ -137,9 +137,9 @@ conda activate XpBrew
 If your package metadata collection or environment solving steps are taking long, follow the below steps:
 
 ```
-git clone https://github.com/PuckerLab/Xpression_collect
+git clone https://github.com/PuckerLab/XpBrew
 
-cd Xpression_collect
+cd XpBrew
 
 conda update -n base conda-libmamba-solver libmamba libmambapy
 
