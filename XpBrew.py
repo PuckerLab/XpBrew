@@ -1,7 +1,7 @@
 ### Shakunthala Natarajan ###
 ### bug reports: s64snata@uni-bonn.de ###
 
-__version__= "0.5.0" # latest version
+__version__= "0.5.1" # latest version
 __usage__="""
 			python3 XpBrew.py
 			--input_config <Full path to tab separated config file specifying the reference name, full path to CDS file, and full path to GFF file>
@@ -65,6 +65,7 @@ import copy
 import logging
 import shutil
 import pandas as pd
+import json
 from functools import reduce
 from pathlib import Path
 from collections import Counter, OrderedDict
@@ -77,7 +78,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed, TimeoutError
 try:
 	from pyfiglet import Figlet
 	f = Figlet(font='doom',width=200)
-	print(f.renderText('XpBrew v0.5.0'))
+	print(f.renderText('XpBrew v0.5.1'))
 except ImportError:
 	pass
 
@@ -231,6 +232,7 @@ def translate_file(logger, in_fa, out_fa, genetic_code, internal_stop_to_x=False
 			out.write(f">{header}\n{pep}\n")
 	logger.info(f" {os.path.basename(in_fa)} -> {os.path.basename(out_fa)} | "
 		  f"seqs: {len(seqs)} | internal-stops (pre-fix): {internal_stop_count}")
+	return out_fa
 
 def gather_inputs(spec):
 	"""Return list of input files. If directory, grab common FASTA extensions."""
@@ -361,8 +363,8 @@ def pre_download_databases(logger, busco_path, org_type, busco_dir, busco_db_dir
 #function to clean gene names for BUSCO analysis
 def clean_headers_for_busco(gene_id):
 	for char, replacement in replacements.items():
-		safe_gene_id = gene_id.replace(char, replacement)
-	return safe_gene_id
+		gene_id = gene_id.replace(char, replacement)
+	return gene_id
 
 #function to run BUSCO
 def run_busco(ref, logger, orgname, fasta_file, busco_path, busco_dir, busco_dir_final, busco_threads_per_organism, org_type,host_cache_dir, busco_db_dir, buscolineage):
@@ -1247,6 +1249,14 @@ def parallel_prefetch(prefetch_completed_accessions, accession, attempts,sradir,
 						os.fsync(out.fileno())
 
 def main(arguments):
+	user = str(arguments[arguments.index('--username')+1])
+	assembly_version= str(arguments[arguments.index('--assembly_version')+1])
+	annotation_version = str(arguments[arguments.index('--annotation_version')+1])
+	reference_doi = str(arguments[arguments.index('--reference')+1])
+	access_link = str(arguments[arguments.index('--database_accession_link')+1])
+	cds_processing_method = str(arguments[arguments.index('--cds_method')+1])
+	family = str(arguments[arguments.index('--family')+1])
+	order = str(arguments[arguments.index('--order') + 1])
 
 	if '--fetch' in arguments:#kingfisher or sratoolkit; default is sratoolkit
 		fetch = arguments[arguments.index('--fetch')+1]
@@ -1262,10 +1272,7 @@ def main(arguments):
 		fetch_fallback = arguments[arguments.index('--fetch_fallback')+1]
 	else:
 		fetch_fallback = 'no'
-	if '--sample_name' in arguments:
-		orgname = arguments[arguments.index('--sample_name')+1]
-	else:
-		orgname = 'sample'
+	orgname = arguments[arguments.index('--sample_name')+1]
 	if  '--sra' in arguments:#list of SRA accessions to be fetched from NCBI SRA
 		todo_sras = arguments[arguments.index('--sra')+1]
 		if os.path.isfile(todo_sras):
@@ -1523,7 +1530,7 @@ def main(arguments):
 				ref_dic_repr_tpm[ref] = merge_filtered_repr_tpm
 
 
-	logger.info("Welcome to XpBrew v0.5.0!")
+	logger.info("Welcome to XpBrew v0.5.1!")
 
 	results_out_folder = os.path.join(outdir, 'Results')
 	if not os.path.exists(results_out_folder):
@@ -1548,7 +1555,9 @@ def main(arguments):
 		host_cache_dir = os.path.join(os.path.dirname(busco_dir), "BUSCO_cache")
 		os.makedirs(host_cache_dir, exist_ok=True)
 		busco_db_dir = os.path.join(busco_dir, 'BUSCO_databases')
-
+	busco_cmd = None
+	pep_busco_completeness = None
+	isoform_removed_pep_busco_completeness = None
 	for folder in Path(results_out_folder).iterdir():
 		#code block to obtain PEP file from CDS file
 		ref = folder.name
@@ -1581,7 +1590,7 @@ def main(arguments):
 			os.makedirs(os.path.dirname(pep_file), exist_ok=True)
 			if not os.path.exists(pep_file):
 				logger.info("Translating CDS file to PEP file")
-				translate_file(logger, in_file, pep_file, genetic_code, internal_stop_to_x=internal_stop_to_x)
+				peptide_seq_file = translate_file(logger, in_file, pep_file, genetic_code, internal_stop_to_x=internal_stop_to_x)
 
 		# code to do BUSCO based QC
 		if qc == 'yes':
@@ -1659,8 +1668,12 @@ def main(arguments):
 					busco_single_copy_lists = {}
 					if busco_path != 'busco_docker':
 						busco_result = run_busco(ref, logger, orgname, str(pep_file), busco_path, busco_dir, busco_dir_final,str(cores), org_type, host_cache_dir,busco_db_dir, buscolineage)
+						busco_scores=busco_result.strip().split('\t')
+						pep_busco_completeness = str(busco_scores[2])
 					elif busco_path == 'busco_docker':
 						busco_result = run_busco(ref, logger, orgname, str(pep_file), busco_path_generated, busco_dir,busco_dir_final, str(cores), org_type,container_cache_dir, container_db_dir, buscolineage)
+						busco_scores = busco_result.strip().split('\t')
+						pep_busco_completeness = str(busco_scores[2])
 					with open(busco_qc_result, 'w') as out:
 						out.write('Organism' + '\t' + 'Pseudo ploidy number' + '\t' + 'BUSCO Completeness (%)' + '\t' + 'BUSCO Duplication (%)' + '\n')
 						out.write(str(busco_result) + '\n')
@@ -1794,6 +1807,7 @@ def main(arguments):
 	ref_main_folders = [item for item in Path(results_out_folder).iterdir() if item.is_dir()]
 	ref_tmp_folders = [item for item in Path(results_tmp_folder).iterdir() if item.is_dir()]
 	for ref in multi_ref_dic:
+		sra_samples=0
 		folder = next(directory for directory in ref_main_folders if directory.name == ref)
 		kallistofinaldir = os.path.join(folder, 'Kallisto_run_final')
 		if not os.path.exists(kallistofinaldir):
@@ -2008,7 +2022,33 @@ def main(arguments):
 				for in_file in inputs:
 					pep_file = make_output_path(repr_output_spec, in_file)
 					os.makedirs(os.path.dirname(pep_file), exist_ok=True)
-					translate_file(logger, in_file, pep_file, genetic_code, internal_stop_to_x=internal_stop_to_x)
+					isoform_reduced_pep_seq_file = translate_file(logger, in_file, pep_file, genetic_code, internal_stop_to_x=internal_stop_to_x)
+			# BUSCO QC of the isoform-reduced PEP file
+			if qc == 'yes' and busco_cmd:
+				busco_dir_final = os.path.join(folder, 'BUSCO_QC')
+				repr_busco_qc_result = os.path.join(busco_dir_final, 'BUSCO_QC.repr.tsv')
+				if not os.path.exists(repr_busco_qc_result):
+					if busco_path == 'busco_docker':
+						runner = os.path.join(busco_dir_final,
+											  'run_busco_docker.sh')  # wrapper written during the first BUSCO pass
+					else:
+						runner = busco_path
+					if not os.path.isfile(runner) and busco_path == 'busco_docker':
+						logger.warning(
+							f"{ref}: BUSCO docker wrapper not found; skipping BUSCO QC of repr PEP file")
+					else:
+						logger.info(f"Attempting BUSCO QC of isoform-reduced PEP file of {ref}")
+						repr_busco_result = run_busco(f"{ref}_repr", logger, f"{orgname}.repr",
+													  repr_output_spec,
+													  runner, busco_dir, busco_dir_final, str(cores), org_type,
+													  host_cache_dir, busco_db_dir, buscolineage)
+						busco_scores = repr_busco_result.strip().split('\t')
+						isoform_removed_pep_busco_completeness = str(busco_scores[2])
+						with open(repr_busco_qc_result, 'w') as out:
+							out.write(
+								'Organism\tPseudo ploidy number\tBUSCO Completeness (%)\tBUSCO Duplication (%)\n')
+							out.write(str(repr_busco_result) + '\n')
+						logger.info(f"BUSCO QC of isoform-reduced PEP file completed for {ref}.")
 
 				#code block to produce TPM file without alternative isoforms
 				repr_tpm_filtered = keep_primary_transcript_exp(repr_ids, repr_tpm_file, isoform_reduced_cds_file, filtered_tpm_file)
@@ -2069,6 +2109,12 @@ def main(arguments):
 				if RICH_AVAILABLE:
 					sys.stdout.write(f"Aborting merge for {ref}:\n{e}")
 					sys.stdout.flush()
+		# creating metadata json file
+		json_file = os.path.join(folder, f'{orgname}.json')
+		metadata_dic = {}
+		metadata_dic = {"Assembly_version": assembly_version, "Annotation_version": annotation_version,
+						"Database_access_link_accession": access_link, "Reference": reference_doi,
+						}
 		if ref_dic_repr_tpm and remove_isoforms == 'yes':
 			merge_filtered_repr_tpm = ref_dic_repr_tpm[ref]
 			logger.info(f"Starting to merge representative TPM file(s)")
