@@ -8,7 +8,19 @@ __usage__="""
 							First column has the reference name, TAIR10 for example, second and third columns need the full path to CDS and GFF files
 							for the specific reference; Providing the CDS file path is mandatory while the GFF file is optional.
 							XpBrew thereby supports expression analysis of the accessions using multiple references. So different references
-							can be specified one per line along with the other columnar details in the input confog file>
+							can be specified one per line along with the other columnar details in the input config file>
+			--metadata_config <Full path to tab separated metadata config file>
+				One line per reference with 9 tab separated columns in this order:
+				1. Reference name - must match the reference name in the input config file
+				2. Assembly version
+				3. Annotation version
+				4. Database access link or accession of the assembly/annotation
+				5. Reference - publication or DOI of the assembly/annotation
+				6. Family of the organism
+				7. Order of the organism
+				8. CDS processing method - how the CDS file was generated, e.g. gffread
+				9. Responsible person - name of the user running XpBrew
+				Fields may contain spaces within but not tabs; All 9 fileds must be complete for the tool to run
 			--sample_name <Name of the sample you are analyzing>
 			--sra <Full path to TXT file with one SRA accession per line>
 			--fetch <Method of fetching the accessions> sratoolkit | kingfisher; default is sratoolkit
@@ -43,7 +55,7 @@ __usage__="""
 			--black <SRA IDs to be removed or blacklisted in a TXT file with one SRA accession ID per line>
 			--busco <Full path to BUSCO> <Specify busco_docker if BUSCO is installed via docker>
 			--busco_lineage <Specify the BUSCO lineage> default is auto
-			--busco_version <Version of BUSCO> default is v6.0.0
+			--busco_version <Version of BUSCO> default is v6.1.0
 			--container_version <Container version of the BUSCO docker image>
 			--docker_host_path <Host path to be mounted on for running the docker image>
 			--docker_container_path <Container path of the docker image>
@@ -512,6 +524,16 @@ def run_busco(ref, logger, orgname, fasta_file, busco_path, busco_dir, busco_dir
 			feff_result = str(orgname)+'\t'+str(Feff)+'\t'+str(C_value)+'\t'+str(D_value)
 	return feff_result
 
+#function to extract BUSCO completeness for json file logging
+def read_busco_completeness(qc_file):
+	if os.path.exists(qc_file):
+		with open(qc_file, 'r') as f:
+			f.readline()
+			parts = f.readline().strip().split('\t')
+			if len(parts) >= 3 and parts[2] != 'NA':
+				return parts[2]
+	return None
+
 def load_IDs(filename):
 	IDs = []
 	if not filename.lower().endswith('.gz'):
@@ -930,7 +952,7 @@ def merge_expression_tsvs(base_file, additional_files,logger,RICH_AVAILABLE):
 	return merged.reset_index()
 
 #function for removing alternate transcripts from the peptide FASTA file
-def isoform_clean(gff3_input_file, cds_dict, no_trans_cds, child_attribute, child_parent_linker):
+def isoform_clean(gff3_input_file, cds_dict, no_trans_cds, child_attribute, child_parent_linker,logger,RICH_AVAILABLE):
 	repr_ids={}
 	no_gene_no_parent = False
 	has_gene = False
@@ -1026,24 +1048,69 @@ def isoform_clean(gff3_input_file, cds_dict, no_trans_cds, child_attribute, chil
 							except KeyError:
 								transcripts_per_gene.update({partsnew1: [partsnew0]})
 				line = f.readline()
+	# check for genes whose CDS features are linked directly to the gene without an mRNA/transcript feature
+	# check for genes whose CDS features are linked directly to the gene without an mRNA/transcript feature
+	cds_mismatch = False
+	cds_mrna_name_mismatch = False
+	mrna_ids = {t for ts in transcripts_per_gene.values() for t in ts}
+	if coding_feature != 'CDS':
+		cds_parent_genes = set()
+		for line in gff_lines:
+			if not line.startswith('#'):
+				parts = line.strip().split('\t')
+				if len(parts) > 8 and parts[2].upper() == 'CDS':
+					for attr in parts[8].split(';'):
+						if attr.startswith(child_parent_linker + '='):
+							cds_parent_genes.add(attr.replace(child_parent_linker + '=', ''))
+		skipped = cds_parent_genes - set(transcripts_per_gene.keys()) - mrna_ids
+		if skipped:
+			cds_mismatch = True
+	# check if all CDS FASTA headers match the transcript IDs in the GFF file
+	unmatched_headers = set(cds_dict.keys()) - mrna_ids
+	if unmatched_headers:
+		cds_mrna_name_mismatch = True
 
-	gene_names = list(transcripts_per_gene.keys())
-	with open(no_trans_cds, "w") as out:
-		for gene in gene_names:
-			trans_length = []
-			isoform_list = []
-			for trans in transcripts_per_gene[gene]:
-				if trans in cds_dict:
-					if len(transcripts_per_gene[gene]) < 2:
-						out.write('>' + str(trans) + '\n' + str(cds_dict[trans]) + '\n')
-					else:
-						trans_length.append((trans, cds_dict[trans]))
-						isoform_list.append(trans)
-			if trans_length:
-				best_trans, seq = max(trans_length, key=lambda x: len(x[1]))
-				out.write('>' + str(best_trans) + "\n" + str(seq) + "\n")
-				isoform_list.remove(best_trans)
-				repr_ids[best_trans] = isoform_list.copy()
+	if cds_mismatch == False and cds_mrna_name_mismatch == False:
+		gene_names = list(transcripts_per_gene.keys())
+		with open(no_trans_cds, "w") as out:
+			for gene in gene_names:
+				trans_length = []
+				isoform_list = []
+				for trans in transcripts_per_gene[gene]:
+					if trans in cds_dict:
+						if len(transcripts_per_gene[gene]) < 2:
+							out.write('>' + str(trans) + '\n' + str(cds_dict[trans]) + '\n')
+						else:
+							trans_length.append((trans, cds_dict[trans]))
+							isoform_list.append(trans)
+				if trans_length:
+					best_trans, seq = max(trans_length, key=lambda x: len(x[1]))
+					out.write('>' + str(best_trans) + "\n" + str(seq) + "\n")
+					isoform_list.remove(best_trans)
+					repr_ids[best_trans] = isoform_list.copy()
+	else:
+		if cds_mismatch == True and cds_mrna_name_mismatch == False:
+			repr_ids = None
+			logger.warning("Mismatch in CDS feature mapping to parent feature; Isoform removal is skipped ")
+			if RICH_AVAILABLE:
+				sys.stdout.write(f"Mismatch in CDS feature mapping to parent feature; Isoform removal is skipped\n")
+				sys.stdout.flush()
+		elif cds_mismatch == False and cds_mrna_name_mismatch == True:
+			repr_ids = None
+			logger.warning("CDS feature parent attribute and mRNA feature attribute differ; Isoform removal is skipped ")
+			if RICH_AVAILABLE:
+				sys.stdout.write(f"CDS feature parent attribute and mRNA feature attribute differ; Isoform removal is skipped\n")
+				sys.stdout.flush()
+		elif cds_mismatch == True and cds_mrna_name_mismatch == True:
+			repr_ids = None
+			logger.warning("Mismatch in CDS feature mapping to parent feature ")
+			if RICH_AVAILABLE:
+				sys.stdout.write(f"Mismatch in CDS feature mapping to parent feature\n")
+				sys.stdout.flush()
+			logger.warning("CDS feature parent attribute and mRNA feature attribute differ; Isoform removal is skipped ")
+			if RICH_AVAILABLE:
+				sys.stdout.write(f"CDS feature parent attribute and mRNA feature attribute differ; Isoform removal is skipped\n")
+				sys.stdout.flush()
 
 	return repr_ids
 
@@ -1249,14 +1316,6 @@ def parallel_prefetch(prefetch_completed_accessions, accession, attempts,sradir,
 						os.fsync(out.fileno())
 
 def main(arguments):
-	user = str(arguments[arguments.index('--username')+1])
-	assembly_version= str(arguments[arguments.index('--assembly_version')+1])
-	annotation_version = str(arguments[arguments.index('--annotation_version')+1])
-	reference_doi = str(arguments[arguments.index('--reference')+1])
-	access_link = str(arguments[arguments.index('--database_accession_link')+1])
-	cds_processing_method = str(arguments[arguments.index('--cds_method')+1])
-	family = str(arguments[arguments.index('--family')+1])
-	order = str(arguments[arguments.index('--order') + 1])
 
 	if '--fetch' in arguments:#kingfisher or sratoolkit; default is sratoolkit
 		fetch = arguments[arguments.index('--fetch')+1]
@@ -1320,6 +1379,29 @@ def main(arguments):
 				else:
 					print(f'GFF file missing for {parts[0]}. Exiting...')
 					sys.exit(__usage__)
+
+	multi_ref_metadata_dic = {}
+	multi_ref_metadata_config_file = arguments[arguments.index('--metadata_config')+1]
+	if not os.path.isfile(multi_ref_metadata_config_file):
+		print('Metadata config file missing. Exiting...')
+		sys.exit(__usage__)
+	with open (multi_ref_metadata_config_file,'r') as f:
+		for line in f:
+			if not line.strip() or line.startswith('#'):
+				continue
+			parts = line.rstrip('\r\n').split('\t')
+			if len(parts)<9:
+				print(f'Some metadata fields missing for {parts[0]}. Exiting...')
+				sys.exit(__usage__)
+			else:
+				multi_ref_metadata_dic[parts[0]] = {"Assembly_version":parts[1], "Annotation_version":parts[2],
+										   "Database_access_link_accession": parts[3],"Reference": parts[4],
+										   "Family":parts[5],"Order":parts[6], "CDS_processing_method":parts[7],
+										   "User":parts[8]}
+	missing_metadata = [ref for ref in multi_ref_dic if ref not in multi_ref_metadata_dic]
+	if missing_metadata:
+		print(f'Metadata missing for reference(s) {missing_metadata} in the metadata config file. Exiting...')
+		sys.exit(__usage__)
 
 	if '--annotation_qc' in arguments:# yes or no for BUSCO-based QC of the PEP file
 		qc = arguments[arguments.index('--annotation_qc')+1]
@@ -1556,8 +1638,6 @@ def main(arguments):
 		os.makedirs(host_cache_dir, exist_ok=True)
 		busco_db_dir = os.path.join(busco_dir, 'BUSCO_databases')
 	busco_cmd = None
-	pep_busco_completeness = None
-	isoform_removed_pep_busco_completeness = None
 	for folder in Path(results_out_folder).iterdir():
 		#code block to obtain PEP file from CDS file
 		ref = folder.name
@@ -1668,12 +1748,8 @@ def main(arguments):
 					busco_single_copy_lists = {}
 					if busco_path != 'busco_docker':
 						busco_result = run_busco(ref, logger, orgname, str(pep_file), busco_path, busco_dir, busco_dir_final,str(cores), org_type, host_cache_dir,busco_db_dir, buscolineage)
-						busco_scores=busco_result.strip().split('\t')
-						pep_busco_completeness = str(busco_scores[2])
 					elif busco_path == 'busco_docker':
 						busco_result = run_busco(ref, logger, orgname, str(pep_file), busco_path_generated, busco_dir,busco_dir_final, str(cores), org_type,container_cache_dir, container_db_dir, buscolineage)
-						busco_scores = busco_result.strip().split('\t')
-						pep_busco_completeness = str(busco_scores[2])
 					with open(busco_qc_result, 'w') as out:
 						out.write('Organism' + '\t' + 'Pseudo ploidy number' + '\t' + 'BUSCO Completeness (%)' + '\t' + 'BUSCO Duplication (%)' + '\n')
 						out.write(str(busco_result) + '\n')
@@ -1807,7 +1883,8 @@ def main(arguments):
 	ref_main_folders = [item for item in Path(results_out_folder).iterdir() if item.is_dir()]
 	ref_tmp_folders = [item for item in Path(results_tmp_folder).iterdir() if item.is_dir()]
 	for ref in multi_ref_dic:
-		sra_samples=0
+		sra_samples=None
+		repr_ids = None
 		folder = next(directory for directory in ref_main_folders if directory.name == ref)
 		kallistofinaldir = os.path.join(folder, 'Kallisto_run_final')
 		if not os.path.exists(kallistofinaldir):
@@ -1993,69 +2070,68 @@ def main(arguments):
 				else:
 					child_attribute = gff_config_dic['default']['child_attribute']
 					child_parent_linker = gff_config_dic['default']['child_parent_linker']
-				repr_ids = isoform_clean(gff_file, cds_dict, isoform_reduced_cds_file, child_attribute, child_parent_linker)
+				repr_ids = isoform_clean(gff_file, cds_dict, isoform_reduced_cds_file, child_attribute, child_parent_linker,logger,RICH_AVAILABLE)
 
-				#code block to produce PEP file without isoforms
-				repr_input_spec = isoform_reduced_cds_file
-				internal_stop_to_x = ('--internal-stop-to-x' in arguments)
+				if repr_ids is not None:#perform isoform removal only if repr_ids is non-empty dictionary
+					#code block to produce PEP file without isoforms
+					repr_input_spec = isoform_reduced_cds_file
+					internal_stop_to_x = ('--internal-stop-to-x' in arguments)
 
-				# Standard code table (nuclear, 1)
-				genetic_code = {
-					'CTT': 'L', 'ATG': 'M', 'AAG': 'K', 'AAA': 'K', 'ATC': 'I', 'AAC': 'N', 'ATA': 'I', 'AGG': 'R',
-					'CCT': 'P', 'ACT': 'T', 'AGC': 'S', 'ACA': 'T', 'AGA': 'R', 'CAT': 'H', 'AAT': 'N', 'ATT': 'I',
-					'CTG': 'L', 'CTA': 'L', 'CTC': 'L', 'CAC': 'H', 'ACG': 'T', 'CCG': 'P', 'AGT': 'S', 'CAG': 'Q',
-					'CAA': 'Q', 'CCC': 'P', 'TAG': '*', 'TAT': 'Y', 'GGT': 'G', 'TGT': 'C', 'CGA': 'R', 'CCA': 'P',
-					'TCT': 'S', 'GAT': 'D', 'CGG': 'R', 'TTT': 'F', 'TGC': 'C', 'GGG': 'G', 'TGA': '*', 'GGA': 'G',
-					'TGG': 'W', 'GGC': 'G', 'TAC': 'Y', 'GAG': 'E', 'TCG': 'S', 'TTA': 'L', 'GAC': 'D', 'TCC': 'S',
-					'GAA': 'E', 'TCA': 'S', 'GCA': 'A', 'GTA': 'V', 'GCC': 'A', 'GTC': 'V', 'GCG': 'A', 'GTG': 'V',
-					'TTC': 'F', 'GTT': 'V', 'GCT': 'A', 'ACC': 'T', 'TTG': 'L', 'CGT': 'R', 'TAA': '*', 'CGC': 'R'
-				}
+					# Standard code table (nuclear, 1)
+					genetic_code = {
+						'CTT': 'L', 'ATG': 'M', 'AAG': 'K', 'AAA': 'K', 'ATC': 'I', 'AAC': 'N', 'ATA': 'I', 'AGG': 'R',
+						'CCT': 'P', 'ACT': 'T', 'AGC': 'S', 'ACA': 'T', 'AGA': 'R', 'CAT': 'H', 'AAT': 'N', 'ATT': 'I',
+						'CTG': 'L', 'CTA': 'L', 'CTC': 'L', 'CAC': 'H', 'ACG': 'T', 'CCG': 'P', 'AGT': 'S', 'CAG': 'Q',
+						'CAA': 'Q', 'CCC': 'P', 'TAG': '*', 'TAT': 'Y', 'GGT': 'G', 'TGT': 'C', 'CGA': 'R', 'CCA': 'P',
+						'TCT': 'S', 'GAT': 'D', 'CGG': 'R', 'TTT': 'F', 'TGC': 'C', 'GGG': 'G', 'TGA': '*', 'GGA': 'G',
+						'TGG': 'W', 'GGC': 'G', 'TAC': 'Y', 'GAG': 'E', 'TCG': 'S', 'TTA': 'L', 'GAC': 'D', 'TCC': 'S',
+						'GAA': 'E', 'TCA': 'S', 'GCA': 'A', 'GTA': 'V', 'GCC': 'A', 'GTC': 'V', 'GCG': 'A', 'GTG': 'V',
+						'TTC': 'F', 'GTT': 'V', 'GCT': 'A', 'ACC': 'T', 'TTG': 'L', 'CGT': 'R', 'TAA': '*', 'CGC': 'R'
+					}
 
-				inputs = gather_inputs(repr_input_spec)
+					inputs = gather_inputs(repr_input_spec)
 
-				# If multiple inputs but output_spec is a file path, abort to avoid overwriting
-				if len(inputs) > 1 and (not repr_output_spec.endswith(os.sep) and not os.path.isdir(repr_output_spec)):
-					sys.exit("[ERROR] For multiple input files, --out must be a directory or end with '/'.")
-				if repr_output_spec.endswith(os.sep):
-					os.makedirs(repr_output_spec, exist_ok=True)
+					# If multiple inputs but output_spec is a file path, abort to avoid overwriting
+					if len(inputs) > 1 and (not repr_output_spec.endswith(os.sep) and not os.path.isdir(repr_output_spec)):
+						sys.exit("[ERROR] For multiple input files, --out must be a directory or end with '/'.")
+					if repr_output_spec.endswith(os.sep):
+						os.makedirs(repr_output_spec, exist_ok=True)
 
-				for in_file in inputs:
-					pep_file = make_output_path(repr_output_spec, in_file)
-					os.makedirs(os.path.dirname(pep_file), exist_ok=True)
-					isoform_reduced_pep_seq_file = translate_file(logger, in_file, pep_file, genetic_code, internal_stop_to_x=internal_stop_to_x)
-			# BUSCO QC of the isoform-reduced PEP file
-			if qc == 'yes' and busco_cmd:
-				busco_dir_final = os.path.join(folder, 'BUSCO_QC')
-				repr_busco_qc_result = os.path.join(busco_dir_final, 'BUSCO_QC.repr.tsv')
-				if not os.path.exists(repr_busco_qc_result):
-					if busco_path == 'busco_docker':
-						runner = os.path.join(busco_dir_final,
-											  'run_busco_docker.sh')  # wrapper written during the first BUSCO pass
-					else:
-						runner = busco_path
-					if not os.path.isfile(runner) and busco_path == 'busco_docker':
-						logger.warning(
-							f"{ref}: BUSCO docker wrapper not found; skipping BUSCO QC of repr PEP file")
-					else:
-						logger.info(f"Attempting BUSCO QC of isoform-reduced PEP file of {ref}")
-						repr_busco_result = run_busco(f"{ref}_repr", logger, f"{orgname}.repr",
-													  repr_output_spec,
-													  runner, busco_dir, busco_dir_final, str(cores), org_type,
-													  host_cache_dir, busco_db_dir, buscolineage)
-						busco_scores = repr_busco_result.strip().split('\t')
-						isoform_removed_pep_busco_completeness = str(busco_scores[2])
-						with open(repr_busco_qc_result, 'w') as out:
-							out.write(
-								'Organism\tPseudo ploidy number\tBUSCO Completeness (%)\tBUSCO Duplication (%)\n')
-							out.write(str(repr_busco_result) + '\n')
-						logger.info(f"BUSCO QC of isoform-reduced PEP file completed for {ref}.")
+					for in_file in inputs:
+						pep_file = make_output_path(repr_output_spec, in_file)
+						os.makedirs(os.path.dirname(pep_file), exist_ok=True)
+						isoform_reduced_pep_seq_file = translate_file(logger, in_file, pep_file, genetic_code, internal_stop_to_x=internal_stop_to_x)
 
-				#code block to produce TPM file without alternative isoforms
-				repr_tpm_filtered = keep_primary_transcript_exp(repr_ids, repr_tpm_file, isoform_reduced_cds_file, filtered_tpm_file)
-				logger.info(f'XpBrew pipeline completed successfully for {ref}!!!')
-				if RICH_AVAILABLE:
-					sys.stdout.write(f"XpBrew pipeline completed successfully for {ref}!!!\n")
-					sys.stdout.flush()
+					# code block to produce TPM file without alternative isoforms
+					repr_tpm_filtered = keep_primary_transcript_exp(repr_ids, repr_tpm_file,isoform_reduced_cds_file, filtered_tpm_file)
+					logger.info(f'XpBrew pipeline completed successfully for {ref}. BUSCO runs will start for the isoform removed PEP file(s) if QC is activated!!!')
+					if RICH_AVAILABLE:
+						sys.stdout.write(f"XpBrew pipeline completed successfully for {ref}. BUSCO runs will start for the isoform removed PEP file(s) if QC is activated!!!\n")
+						sys.stdout.flush()
+
+				# BUSCO QC of the isoform-reduced PEP file
+				if qc == 'yes' and busco_cmd and os.path.exists(repr_output_spec):
+					busco_dir_final = os.path.join(folder, 'BUSCO_QC')
+					repr_busco_qc_result = os.path.join(busco_dir_final, 'BUSCO_QC.repr.tsv')
+					if not os.path.exists(repr_busco_qc_result):
+						if busco_path == 'busco_docker':
+							runner = os.path.join(busco_dir_final,  'run_busco_docker.sh')  # wrapper written during the first BUSCO pass
+						else:
+							runner = busco_path
+						if not os.path.isfile(runner) and busco_path == 'busco_docker':
+							logger.warning(f"{ref}: BUSCO docker wrapper not found; skipping BUSCO QC of repr PEP file")
+						else:
+							logger.info(f"Attempting BUSCO QC of isoform-reduced PEP file of {ref}")
+							repr_busco_result = run_busco(f"{ref}_repr", logger, f"{orgname}.repr",
+														  repr_output_spec,
+														  runner, busco_dir, busco_dir_final, str(cores), org_type,
+														  host_cache_dir, busco_db_dir, buscolineage)
+							with open(repr_busco_qc_result, 'w') as out:
+								out.write(
+									'Organism\tPseudo ploidy number\tBUSCO Completeness (%)\tBUSCO Duplication (%)\n')
+								out.write(str(repr_busco_result) + '\n')
+							logger.info(f"BUSCO QC of isoform-reduced PEP file completed for {ref}.")
+
 
 		# code block to merge filtered TPM file produced in this run with already existing filtered TPM files
 		try:
@@ -2076,6 +2152,7 @@ def main(arguments):
 				if os.path.exists(filtered_tpm_file):
 					merged_df = merge_expression_tsvs(filtered_tpm_file, merge_filtered_tpm,logger,RICH_AVAILABLE)
 					merged_df.to_csv(merged_filtered_tpm_file, sep='\t', index=False)
+					sra_samples = str((merged_df.shape[1]) - 1)
 					logger.info(f"Merge of currently produced TPM file and user supplied TPM file(s) successful: {merged_df.shape[0]} genes x {merged_df.shape[1]} samples")
 					if RICH_AVAILABLE:
 						sys.stdout.write(f"Merge of currently produced TPM file and user supplied TPM file successful: {merged_df.shape[0]} genes x {merged_df.shape[1]} samples\n")
@@ -2084,6 +2161,7 @@ def main(arguments):
 					if len(merge_filtered_tpm) > 1:
 						merged_df = merge_expression_tsvs(merge_filtered_tpm[0],merge_filtered_tpm[1:],logger,RICH_AVAILABLE)
 						merged_df.to_csv(merged_filtered_tpm_file, sep='\t', index=False)
+						sra_samples = str((merged_df.shape[1]) - 1)
 						logger.warning(f"{ref}: No valid expression file produced in this run for merge. Merged the other expression files input for merge.")
 						if RICH_AVAILABLE:
 							sys.stdout.write(f"{ref}: No valid expression file produced in this run for merge. Merged the other expression files input for merge.\n")
@@ -2110,11 +2188,32 @@ def main(arguments):
 					sys.stdout.write(f"Aborting merge for {ref}:\n{e}")
 					sys.stdout.flush()
 		# creating metadata json file
+		if os.path.exists(filtered_tpm_file) and not ref_dic_tpm:
+			sra_samples = str(pd.read_csv(filtered_tpm_file, sep='\t', nrows=0).shape[1] - 1)
+		busco_qc_dir = os.path.join(folder, 'BUSCO_QC')
+		pep_busco_completeness = read_busco_completeness(os.path.join(busco_qc_dir, 'BUSCO_QC.tsv')) if qc == 'yes' else None
+		isoform_removed_pep_busco_completeness = read_busco_completeness(os.path.join(busco_qc_dir, 'BUSCO_QC.repr.tsv')) if (qc == 'yes' and remove_isoforms == 'yes') else None
+		isoform_removal_done = 'yes' if (remove_isoforms == 'yes' and os.path.exists(repr_tpm_file)) else 'no'
+		busco_lineage_used = None
+		if qc == 'yes':
+			busco_lineage_used = buscolineage
+			if buscolineage == 'auto':
+				ref_busco_dir = Path(busco_dir) / ref
+				if ref_busco_dir.is_dir():
+					lineage_runs = [p.name.replace('run_', '') for p in ref_busco_dir.iterdir() if p.is_dir() and p.name.startswith('run_') and 'eukaryota' not in p.name and 'prokaryota' not in p.name]
+					if lineage_runs:
+						busco_lineage_used = lineage_runs[0]
+			busco_lineage_used = f'{busco_lineage_used}_{busco_version}'
 		json_file = os.path.join(folder, f'{orgname}.json')
-		metadata_dic = {}
-		metadata_dic = {"Assembly_version": assembly_version, "Annotation_version": annotation_version,
-						"Database_access_link_accession": access_link, "Reference": reference_doi,
-						}
+		metadata_dic = {"Assembly_version": multi_ref_metadata_dic[ref]["Assembly_version"], "Annotation_version": multi_ref_metadata_dic[ref]["Annotation_version"],
+						"Database_access_link_accession": multi_ref_metadata_dic[ref]["Database_access_link_accession"], "Reference": multi_ref_metadata_dic[ref]["Reference"],
+						"Samples_available": sra_samples, "BUSCO_lineage_version": busco_lineage_used,
+						"BUSCO_completeness": pep_busco_completeness, "Isoform_removed": isoform_removal_done,
+						"BUSCO_completeness_primary_transcript": isoform_removed_pep_busco_completeness, "Family": multi_ref_metadata_dic[ref]["Family"],
+						"Order": multi_ref_metadata_dic[ref]["Order"], "XpBrew_Version": __version__, "CDS_processing_method": multi_ref_metadata_dic[ref]["CDS_processing_method"],
+						"Responsible_person": multi_ref_metadata_dic[ref]["User"]}
+		with open(json_file, 'w') as jf:
+			json.dump(metadata_dic, jf, indent=4)
 		if ref_dic_repr_tpm and remove_isoforms == 'yes':
 			merge_filtered_repr_tpm = ref_dic_repr_tpm[ref]
 			logger.info(f"Starting to merge representative TPM file(s)")
@@ -2158,7 +2257,7 @@ def main(arguments):
 	if clean_up=='yes':
 		shutil.rmtree(tmpdir)
 
-if '--sra' in sys.argv and '--input_config' in sys.argv and '--out' in sys.argv:
+if '--sra' in sys.argv and '--input_config' in sys.argv and '--metadata_config' in sys.argv and '--sample_name' in sys.argv and '--out' in sys.argv:
 	main(sys.argv)
 else:
 	sys.exit(__usage__)
