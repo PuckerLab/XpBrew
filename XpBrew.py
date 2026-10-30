@@ -18,9 +18,9 @@ __usage__="""
 				5. Reference - publication or DOI of the assembly/annotation
 				6. Family of the organism
 				7. Order of the organism
-				8. CDS processing method - how the CDS file was generated, e.g. gffread
+				8. CDS processing method - how the CDS file was generated, e.g. get_cds_from_assembly.py_v0.3 Make sure to enter version number!
 				9. Responsible person - name of the user running XpBrew
-				Fields may contain spaces within but not tabs; All 9 fileds must be complete for the tool to run
+				Fields may contain spaces within but NOT tabs; All 9 fields must be complete for the tool to run
 			--sample_name <Name of the sample you are analyzing>
 			--sra <Full path to TXT file with one SRA accession per line>
 			--fetch <Method of fetching the accessions> sratoolkit | kingfisher; default is sratoolkit
@@ -1049,7 +1049,6 @@ def isoform_clean(gff3_input_file, cds_dict, no_trans_cds, child_attribute, chil
 								transcripts_per_gene.update({partsnew1: [partsnew0]})
 				line = f.readline()
 	# check for genes whose CDS features are linked directly to the gene without an mRNA/transcript feature
-	# check for genes whose CDS features are linked directly to the gene without an mRNA/transcript feature
 	cds_mismatch = False
 	cds_mrna_name_mismatch = False
 	mrna_ids = {t for ts in transcripts_per_gene.values() for t in ts}
@@ -1091,25 +1090,25 @@ def isoform_clean(gff3_input_file, cds_dict, no_trans_cds, child_attribute, chil
 	else:
 		if cds_mismatch == True and cds_mrna_name_mismatch == False:
 			repr_ids = None
-			logger.warning("Mismatch in CDS feature mapping to parent feature; Isoform removal is skipped ")
+			logger.warning("CDS feature(s) are linked directly to gene features without an mRNA/transcript feature; Isoform removal is skipped ")
 			if RICH_AVAILABLE:
-				sys.stdout.write(f"Mismatch in CDS feature mapping to parent feature; Isoform removal is skipped\n")
+				sys.stdout.write(f"CDS feature(s) are linked directly to gene features without an mRNA/transcript feature; Isoform removal is skipped\n")
 				sys.stdout.flush()
 		elif cds_mismatch == False and cds_mrna_name_mismatch == True:
 			repr_ids = None
-			logger.warning("CDS feature parent attribute and mRNA feature attribute differ; Isoform removal is skipped ")
+			logger.warning("CDS FASTA headers do not match the transcript IDs in the GFF file; Isoform removal is skipped ")
 			if RICH_AVAILABLE:
-				sys.stdout.write(f"CDS feature parent attribute and mRNA feature attribute differ; Isoform removal is skipped\n")
+				sys.stdout.write(f"CDS FASTA headers do not match the transcript IDs in the GFF file; Isoform removal is skipped\n")
 				sys.stdout.flush()
 		elif cds_mismatch == True and cds_mrna_name_mismatch == True:
 			repr_ids = None
-			logger.warning("Mismatch in CDS feature mapping to parent feature ")
+			logger.warning("CDS feature(s) are linked directly to gene features without an mRNA/transcript feature ")
 			if RICH_AVAILABLE:
-				sys.stdout.write(f"Mismatch in CDS feature mapping to parent feature\n")
+				sys.stdout.write(f"CDS feature(s) are linked directly to gene features without an mRNA/transcript feature\n")
 				sys.stdout.flush()
-			logger.warning("CDS feature parent attribute and mRNA feature attribute differ; Isoform removal is skipped ")
+			logger.warning("CDS FASTA headers do not match the transcript IDs in the GFF file; Isoform removal is skipped ")
 			if RICH_AVAILABLE:
-				sys.stdout.write(f"CDS feature parent attribute and mRNA feature attribute differ; Isoform removal is skipped\n")
+				sys.stdout.write(f"CDS FASTA headers do not match the transcript IDs in the GFF file; Isoform removal is skipped\n")
 				sys.stdout.flush()
 
 	return repr_ids
@@ -1390,7 +1389,7 @@ def main(arguments):
 			if not line.strip() or line.startswith('#'):
 				continue
 			parts = line.rstrip('\r\n').split('\t')
-			if len(parts)<9:
+			if len(parts)<9 or any(not p.strip() for p in parts[:9]):
 				print(f'Some metadata fields missing for {parts[0]}. Exiting...')
 				sys.exit(__usage__)
 			else:
@@ -2072,7 +2071,7 @@ def main(arguments):
 					child_parent_linker = gff_config_dic['default']['child_parent_linker']
 				repr_ids = isoform_clean(gff_file, cds_dict, isoform_reduced_cds_file, child_attribute, child_parent_linker,logger,RICH_AVAILABLE)
 
-				if repr_ids is not None:#perform isoform removal only if repr_ids is non-empty dictionary
+				if repr_ids is not None:#perform isoform removal only if no CDS/GFF mismatch was detected
 					#code block to produce PEP file without isoforms
 					repr_input_spec = isoform_reduced_cds_file
 					internal_stop_to_x = ('--internal-stop-to-x' in arguments)
@@ -2103,34 +2102,35 @@ def main(arguments):
 						isoform_reduced_pep_seq_file = translate_file(logger, in_file, pep_file, genetic_code, internal_stop_to_x=internal_stop_to_x)
 
 					# code block to produce TPM file without alternative isoforms
-					repr_tpm_filtered = keep_primary_transcript_exp(repr_ids, repr_tpm_file,isoform_reduced_cds_file, filtered_tpm_file)
-					logger.info(f'XpBrew pipeline completed successfully for {ref}. BUSCO runs will start for the isoform removed PEP file(s) if QC is activated!!!')
-					if RICH_AVAILABLE:
-						sys.stdout.write(f"XpBrew pipeline completed successfully for {ref}. BUSCO runs will start for the isoform removed PEP file(s) if QC is activated!!!\n")
-						sys.stdout.flush()
+					if os.path.exists(filtered_tpm_file):
+						repr_tpm_filtered = keep_primary_transcript_exp(repr_ids, repr_tpm_file,isoform_reduced_cds_file, filtered_tpm_file)
+						logger.info(f'XpBrew pipeline completed successfully for {ref}. BUSCO runs will start for the isoform removed PEP file(s) if QC is activated!!!')
+						if RICH_AVAILABLE:
+							sys.stdout.write(f"XpBrew pipeline completed successfully for {ref}. BUSCO runs will start for the isoform removed PEP file(s) if QC is activated!!!\n")
+							sys.stdout.flush()
 
-				# BUSCO QC of the isoform-reduced PEP file
-				if qc == 'yes' and busco_cmd and os.path.exists(repr_output_spec):
-					busco_dir_final = os.path.join(folder, 'BUSCO_QC')
-					repr_busco_qc_result = os.path.join(busco_dir_final, 'BUSCO_QC.repr.tsv')
-					if not os.path.exists(repr_busco_qc_result):
-						if busco_path == 'busco_docker':
-							runner = os.path.join(busco_dir_final,  'run_busco_docker.sh')  # wrapper written during the first BUSCO pass
-						else:
-							runner = busco_path
-						if not os.path.isfile(runner) and busco_path == 'busco_docker':
-							logger.warning(f"{ref}: BUSCO docker wrapper not found; skipping BUSCO QC of repr PEP file")
-						else:
-							logger.info(f"Attempting BUSCO QC of isoform-reduced PEP file of {ref}")
-							repr_busco_result = run_busco(f"{ref}_repr", logger, f"{orgname}.repr",
-														  repr_output_spec,
-														  runner, busco_dir, busco_dir_final, str(cores), org_type,
-														  host_cache_dir, busco_db_dir, buscolineage)
-							with open(repr_busco_qc_result, 'w') as out:
-								out.write(
-									'Organism\tPseudo ploidy number\tBUSCO Completeness (%)\tBUSCO Duplication (%)\n')
-								out.write(str(repr_busco_result) + '\n')
-							logger.info(f"BUSCO QC of isoform-reduced PEP file completed for {ref}.")
+			# BUSCO QC of the isoform-reduced PEP file
+			if qc == 'yes' and busco_cmd and os.path.exists(repr_output_spec):
+				busco_dir_final = os.path.join(folder, 'BUSCO_QC')
+				repr_busco_qc_result = os.path.join(busco_dir_final, 'BUSCO_QC.repr.tsv')
+				if not os.path.exists(repr_busco_qc_result):
+					if busco_path == 'busco_docker':
+						runner = os.path.join(busco_dir_final,  'run_busco_docker.sh')  # wrapper written during the first BUSCO pass
+					else:
+						runner = busco_path
+					if not os.path.isfile(runner) and busco_path == 'busco_docker':
+						logger.warning(f"{ref}: BUSCO docker wrapper not found; skipping BUSCO QC of repr PEP file")
+					else:
+						logger.info(f"Attempting BUSCO QC of isoform-reduced PEP file of {ref}")
+						repr_busco_result = run_busco(f"{ref}_repr", logger, f"{orgname}.repr",
+													  repr_output_spec,
+													  runner, busco_dir, busco_dir_final, str(cores), org_type,
+													  host_cache_dir, busco_db_dir, buscolineage)
+						with open(repr_busco_qc_result, 'w') as out:
+							out.write(
+								'Organism\tPseudo ploidy number\tBUSCO Completeness (%)\tBUSCO Duplication (%)\n')
+							out.write(str(repr_busco_result) + '\n')
+						logger.info(f"BUSCO QC of isoform-reduced PEP file completed for {ref}.")
 
 
 		# code block to merge filtered TPM file produced in this run with already existing filtered TPM files
@@ -2142,7 +2142,7 @@ def main(arguments):
 			merged_filtered_tpm_file = os.path.join(folder, f'{orgname}_merged.tpms.tsv')
 			merged_filtered_repr_tpm_file = os.path.join(folder, f'{orgname}_merged.repr.tpms.tsv')
 
-		if ref_dic_tpm:
+		if ref in ref_dic_tpm:
 			merge_filtered_tpm = ref_dic_tpm[ref]
 			logger.info(f"Starting to merge TPM file(s)")
 			if RICH_AVAILABLE:
@@ -2175,7 +2175,7 @@ def main(arguments):
 						if RICH_AVAILABLE:
 							sys.stdout.write(f"{ref}: No valid expression file produced in this run for merge.\n")
 							sys.stdout.flush()
-				if ref_dic_repr_tpm:
+				if ref in ref_dic_repr_tpm and remove_isoforms == 'yes':
 					pass
 				else:
 					logger.info(f'XpBrew pipeline completed successfully for {ref}!!!')
@@ -2188,7 +2188,7 @@ def main(arguments):
 					sys.stdout.write(f"Aborting merge for {ref}:\n{e}")
 					sys.stdout.flush()
 		# creating metadata json file
-		if os.path.exists(filtered_tpm_file) and not ref_dic_tpm:
+		if sra_samples is None and os.path.exists(filtered_tpm_file):
 			sra_samples = str(pd.read_csv(filtered_tpm_file, sep='\t', nrows=0).shape[1] - 1)
 		busco_qc_dir = os.path.join(folder, 'BUSCO_QC')
 		pep_busco_completeness = read_busco_completeness(os.path.join(busco_qc_dir, 'BUSCO_QC.tsv')) if qc == 'yes' else None
@@ -2200,10 +2200,12 @@ def main(arguments):
 			if buscolineage == 'auto':
 				ref_busco_dir = Path(busco_dir) / ref
 				if ref_busco_dir.is_dir():
-					lineage_runs = [p.name.replace('run_', '') for p in ref_busco_dir.iterdir() if p.is_dir() and p.name.startswith('run_') and 'eukaryota' not in p.name and 'prokaryota' not in p.name]
-					if lineage_runs:
-						busco_lineage_used = lineage_runs[0]
-			busco_lineage_used = f'{busco_lineage_used}_{busco_version}'
+					run_dirs = [p for p in ref_busco_dir.iterdir() if p.is_dir() and p.name.startswith('run_') and 'auto_lineage' not in p.name]
+					domain = 'eukaryota' if org_type == 'eukaryote' else 'prokaryota'
+					filtered = [d for d in run_dirs if domain not in d.name.lower()]
+					selected = filtered[0] if filtered else (run_dirs[0] if run_dirs else None)
+					if selected:
+						busco_lineage_used = selected.name.replace('run_', '', 1)
 		json_file = os.path.join(folder, f'{orgname}.json')
 		metadata_dic = {"Assembly_version": multi_ref_metadata_dic[ref]["Assembly_version"], "Annotation_version": multi_ref_metadata_dic[ref]["Annotation_version"],
 						"Database_access_link_accession": multi_ref_metadata_dic[ref]["Database_access_link_accession"], "Reference": multi_ref_metadata_dic[ref]["Reference"],
@@ -2214,7 +2216,7 @@ def main(arguments):
 						"Responsible_person": multi_ref_metadata_dic[ref]["User"]}
 		with open(json_file, 'w') as jf:
 			json.dump(metadata_dic, jf, indent=4)
-		if ref_dic_repr_tpm and remove_isoforms == 'yes':
+		if ref in ref_dic_repr_tpm and remove_isoforms == 'yes':
 			merge_filtered_repr_tpm = ref_dic_repr_tpm[ref]
 			logger.info(f"Starting to merge representative TPM file(s)")
 			if RICH_AVAILABLE:
