@@ -450,40 +450,6 @@ python3 get_cds_from_assembly.py
 
 ```
 
-**(2) compare_cds_seq.py** - Compares CDS FASTA files produced by two different tools (e.g. this repository's `get_cds_from_assembly.py` 
-versus a reference such as the NCBI) for the same annotation. The comparison is done with respect to the reference: sequences are matched 
-by the hash that seqkit calculates for each sequence, so sequence IDs are not used for matching.
-
-Instructions to download seqkit can be found here: https://bioinf.shenwei.me/seqkit/download/
-
-Usage instructions of **compare_cds_seq.py**:
-
-    python3 compare_cds_seq.py
-    --reference <full path to folder of reference CDS files>
-    --test <full path to folder of CDS files to be tested>
-    --out <full path to output directory>
-
-    NOTE_1: CDS files should have the extension .cds.fa, .cds.fna or .cds.fasta 
-	        (optionally followed by .gz)
-    NOTE_2: A reference file and a test file are paired when their names are identical 
-	        after removing the extension (case ignored),
-            e.g. species1.cds.fasta and Species1.cds.fa.gz. 
-			Files without a partner in the other folder are skipped with a warning
-    NOTE_3: The comparison is done with respect to the reference. Sequences are 
-	        compared by the hash calculated by seqkit (seqkit fx2tab -s); 
-			sequences occurring more than once must occur equally often in both files
-
-    All three arguments are mandatory; there are no optional arguments.
-
-    Output files in the output directory:
-            <name>_differences.tsv - sequences found only in the reference (reference_only) or 
-			only in the test file (test_only);
-            columns: status, id, sequence_hash (only written if there are differences)
-            comparison_summary.tsv - one row per name; 
-			columns: name, reference_total, test_total, identical, 
-			reference_only, test_only
-
-
 
 ## Third party tool references
 
