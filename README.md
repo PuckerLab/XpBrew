@@ -25,6 +25,9 @@ XpBrew is a simple Python-based pipeline for fetching RNA-seq reads from SRA and
   -> Metadata config file is mandatory to use the XpBrew pipeline. This is done to ensure
      proper metadata collection right at the start!
 
+  -> The metadata information is used to generate a json file that later helps in building a 
+     metadata reference tracking sheet
+
   -> A helper script has been added to the repo to facilitate obtaining CDS file(s) from GFF3 & assembly files
 
 -> **v0.5.0 is out and is the latest stable release!**
