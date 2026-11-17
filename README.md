@@ -300,7 +300,8 @@ OPTIONAL:
    collection at the start of the pipeline; Following are the detailed instructions to make this file:
    One line per reference with 9 tab separated columns in this order:
    
-				1. Reference name - must match the reference name in the input config file
+				1. Reference name - must match the reference name in the 
+				   input config file
 				
 				2. Assembly version
 				
@@ -314,11 +315,14 @@ OPTIONAL:
 				
 				7. Order of the organism
 				
-				8. CDS processing method - how the CDS file was generated, e.g. get_cds_from_assembly.py_v0.3 Make sure to enter version number!
+				8. CDS processing method - how the CDS file was generated, 
+				   e.g. get_cds_from_assembly.py_v0.3 
+				   Make sure to enter version number!
 				
 				9. Responsible person - name of the user running XpBrew
 				
-				Fields may contain spaces within but NOT tabs; All 9 fields must be complete for the tool to run
+				Fields may contain spaces within but NOT tabs; 
+				All 9 fields must be complete for the tool to run
 
 
 -> The pipeline has the ability to restart after disruptions. Simply repeat the command you used before the disruption
