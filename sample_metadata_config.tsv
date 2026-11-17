@@ -1,2 +1,2 @@
 #reference_name	assembly_version	annotation_version	accession_link	publication_doi	family	order	cds_method	user
-ASM3577273v1	ASM3577273v1	In-house generated	GCA_035772735.1	https://doi.org/10.1186/s12864-023-09894-1	Solanaceae	Solanales	get_cds_from_assembly.py_v0.3	Shakunthala
+ASM3577273v1	v1	In-house generated	GCA_035772735.1	https://doi.org/10.1186/s12864-023-09894-1	Solanaceae	Solanales	get_cds_from_assembly.py_v0.3	Shakunthala
