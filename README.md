@@ -23,7 +23,8 @@ XpBrew is a simple Python-based pipeline for fetching RNA-seq reads from SRA and
 -> **v0.5.1 major changes include**:
 
   -> Metadata config file is mandatory to use the XpBrew pipeline. This is done to ensure
-     proper metadata collection right at the start!
+     proper metadata collection right at the start! A sample metadata file is also provided
+	 in this repo.
 
   -> The metadata information is used to generate a json file that later helps in building a 
      metadata reference tracking sheet
@@ -254,7 +255,7 @@ OPTIONAL:
                                Second column will have paths to filtered_repr_tpm files,
                                one per line
 
---only_merge'		   STR	   Inserting this flag triggers only tpm and repr tpm file merging
+--only_merge		   STR	   Inserting this flag triggers only tpm and repr tpm file merging
                                and not the entire expression analysis run
 
 --min                  INT     Minimum percentage expression of top 100 genes
@@ -298,15 +299,25 @@ OPTIONAL:
 -> The --metadata_config file is being included as a mandatory parameter to enforce proper metadata 
    collection at the start of the pipeline; Following are the detailed instructions to make this file:
    One line per reference with 9 tab separated columns in this order:
+   
 				1. Reference name - must match the reference name in the input config file
+				
 				2. Assembly version
+				
 				3. Annotation version
+				
 				4. Database access link or accession of the assembly/annotation
+				
 				5. Reference - publication or DOI of the assembly/annotation
+				
 				6. Family of the organism
+				
 				7. Order of the organism
+				
 				8. CDS processing method - how the CDS file was generated, e.g. get_cds_from_assembly.py_v0.3 Make sure to enter version number!
+				
 				9. Responsible person - name of the user running XpBrew
+				
 				Fields may contain spaces within but NOT tabs; All 9 fields must be complete for the tool to run
 
 
